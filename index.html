@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Fake Bank APK Detector — Repo Scan</title>
+  <style>
+    /* ---- Keep your dark cyber theme ---- */
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    body { background:#0a0f1c; color:#e6edf3; }
+
+    header { padding: 1rem; text-align:center; }
+    h1, h2 { color:#4fc3f7; text-shadow: 0 0 8px rgba(79,195,247,0.6); }
+
+    .scan-section { padding: 2.5rem 1rem; text-align:center; }
+    .scan-section p { color:#b0bec5; margin-top:8px; }
+
+    .scan-options {
+      display:grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px,1fr));
+      gap: 1rem;
+      max-width: 1000px;
+      margin: 1.25rem auto;
+      padding: 0 1rem;
+    }
+
+    .scan-card {
+      background:#1c2333;
+      border:2px solid #2f3d55;
+      border-radius:12px;
+      padding:1.25rem;
+      text-align:left;
+    }
+    .scan-card h3 { color:#00e676; margin-bottom:.75rem; }
+    .scan-card input[type="file"] {
+      width:100%; padding:.6rem; background:#0d1320; border:1px solid #2f3d55; color:#e6edf3; border-radius:8px;
+    }
+    .scan-card button {
+      margin-top:.5rem;
+      padding:.6rem .9rem; background:#00c853; color:white; border:none; border-radius:8px; cursor:pointer; font-weight:bold;
+      box-shadow: 0 0 10px rgba(0,200,83,0.6);
+    }
+    .scan-card button:hover { background:#00e676; }
+
+    .summary-section { padding: 2rem 1rem; text-align:center; }
+    .summary-container {
+      max-width:1100px;
+      margin: 1rem auto;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px,1fr));
+      gap: 1rem;
+      padding: 0 1rem;
+    }
+
+    .summary-card {
+      background:#1c2333;
+      border:2px solid #2f3d55;
+      border-radius:12px;
+      padding:1rem;
+      text-align:left;
+      box-shadow: 0 0 12px rgba(79,195,247,0.06);
+    }
+
+    .summary-card h3 { color:#ff9800; margin-bottom:.5rem; }
+    .summary-card p { color:#e6edf3; margin-bottom:.4rem; }
+    .summary-card ul { margin-left:1.1rem; margin-top:.4rem; color:#e6edf3; }
+
+    .risk-badge {
+      display:inline-block; padding:.35rem .6rem; border-radius:8px; font-weight:700; margin-top:.4rem;
+    }
+    .risk-high { background:#e53935; color:white; box-shadow: 0 0 12px rgba(229,57,53,0.5); }
+    .risk-medium { background:#ff9800; color:white; box-shadow: 0 0 10px rgba(255,152,0,0.4); }
+    .risk-low { background:#00c853; color:white; box-shadow: 0 0 10px rgba(0,200,83,0.4); }
+
+    #repoResultMsg { display:block; margin:1rem auto; font-weight:700; font-size:1.05rem; max-width:1100px; text-align:center; }
+
+    /* small screens */
+    @media (max-width:520px){
+      .scan-card { padding:.9rem; }
+      .scan-card h3 { font-size:1rem; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Fake Bank APK Detector</h1>
+    <p style="color:#b0bec5; margin-top:.25rem;">Upload a folder (repository) with APKs. Known malicious APKs will be flagged.</p>
+  </header>
+
+  <section class="scan-section">
+    <div class="scan-options">
+      <div class="scan-card">
+        <h3>🗂 Upload APK Repository</h3>
+        <!-- webkitdirectory allows folder upload (Chrome/Edge). Users can also multi-select files. -->
+        <input id="repoFiles" type="file" multiple webkitdirectory directory />
+        <button id="scanRepoBtn">Scan Repository</button>
+        <p style="color:#8b949e; margin-top:.6rem; font-size:.9rem;">
+          Tip: use Chrome/Edge to upload a folder. If not supported, select all files (Ctrl/Cmd + click).
+        </p>
+      </div>
+
+      <!-- <div class="scan-card" style="text-align:center;">
+        <h3>ℹ️ Quick Info</h3>
+        <p style="color:#b0bec5;">This scanner matches file names robustly (case-insensitive, strips spaces/underscores/hyphens/dots). It will detect:</p>
+        <ul style="color:#e6edf3; margin-left:1rem; margin-top:.6rem;">
+          <li>QuickBank.apk</li>
+          <li>EasyFund pro.apk</li>
+          <li>SBI_Reward.apk</li>
+          <li>Instant-Loan.apk</li>
+        </ul>
+      </div>
+    </div> -->
+  </section>
+
+  <section class="summary-section">
+    <h2>APK Scan Summary</h2>
+    <div id="summary" class="summary-container"></div>
+    <div id="repoResultMsg"></div>
+  </section>
+
+  <script>
+    /* ---- Known malicious apps (normalized key => display/meta) ----
+       Keys are normalized (letters+digits only, lowercased, no punctuation)
+    */
+    const MALICIOUS = {
+      "quickbank": {
+        displayName: "QuickBank.apk",
+        score: 80,
+        reasons: [
+          "Requests SMS & contacts — can forward fraud SMS and harvest victims.",
+          "Communicates with suspicious/blacklisted IPs and domains.",
+          "Designed to phish banking credentials via fake UI."
+        ]
+      },
+      "easyfundpro": {
+        displayName: "EasyFund pro.apk",
+        score: 70,
+        reasons: [
+          "Asks for OTP access without valid need — can intercept verification codes.",
+          "Linked to risky network domains and telemetry.",
+          "Excessive internet access for a simple funds app."
+        ]
+      },
+      "sbireward": {
+        displayName: "SBI_Reward.apk",
+        score: 83,
+        reasons: [
+          "Mimics official reward app — social engineering to steal credentials.",
+          "Abuses SMS permissions to send phishing links to contacts.",
+          "Observed connecting to blacklisted servers for data exfiltration."
+        ]
+      },
+      "instantloan": {
+        displayName: "Instant-Loan.apk",
+        score: 75,
+        reasons: [
+          "Unusual combination of OTP & SMS access for loan flows.",
+          "May capture login sessions and private data during authentication.",
+          "Suspicious network patterns suggesting data leakage."
+        ]
+      }
+    };
+
+    // normalize filename: remove extension, make lowercase, strip non-alphanumeric
+    function normalizeBase(name) {
+      // prefer full filename (last path segment)
+      const fname = name.split('/').pop();
+      const withoutExt = fname.replace(/\.[^/.]+$/, ""); // remove extension
+      return withoutExt.toLowerCase().replace(/[^a-z0-9]/g, "");
+    }
+
+    // Decide risk class CSS based on score
+    function riskClass(score) {
+      if (score >= 75) return "risk-high";
+      if (score >= 50) return "risk-medium";
+      return "risk-low";
+    }
+
+    // Render one flagged card
+    function renderFlagCard(originalName, meta) {
+      const div = document.createElement("div");
+      div.className = "summary-card";
+      const scoreClass = riskClass(meta.score);
+      div.innerHTML = `
+        <h3>⚠ ${escapeHtml(originalName)}</h3>
+        <p><strong>Detected as:</strong> ${escapeHtml(meta.displayName)}</p>
+        <p><strong>Risk Score:</strong> <span class="risk-badge ${scoreClass}">${meta.score}%</span></p>
+        <p><strong>Why flagged (summary):</strong></p>
+        <ul>${meta.reasons.map(r => `<li>${escapeHtml(r)}</li>`).join("")}</ul>
+      `;
+      return div;
+    }
+
+    // safe-escape tiny helper
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, function(m){ return { "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m]; });
+    }
+
+    // Main scan function
+    function scanRepositoryFiles(filesList) {
+      const summaryContainer = document.getElementById("summary");
+      const repoMsg = document.getElementById("repoResultMsg");
+      summaryContainer.innerHTML = "";
+      repoMsg.textContent = "";
+
+      if (!filesList || filesList.length === 0) {
+        alert("Please select or upload a repository folder with APK files.");
+        return;
+      }
+
+      // Build normalized map of known malicious keys for quick search
+      const keys = Object.keys(MALICIOUS); // e.g. "quickbank", "easyfundpro", ...
+
+      let found = []; // collect results {fileName, key, meta}
+
+      Array.from(filesList).forEach(file => {
+        // Some browsers provide file.webkitRelativePath with directories; use it if present to get path
+        const nameToUse = (file.webkitRelativePath && file.webkitRelativePath.trim() !== "") ? file.webkitRelativePath : file.name;
+        const normalized = normalizeBase(nameToUse); // e.g. "quickbankv2" or "sbireward"
+        // try exact/contains match: if normalized contains known key or key contains normalized
+        for (let k of keys) {
+          if (normalized === k || normalized.includes(k) || k.includes(normalized)) {
+            // add one result per matching known malicious key per file (avoid duplicates)
+            // but ensure not already found the same file for this key
+            const already = found.find(f => f.fileName === (file.name) && f.key === k);
+            if (!already) found.push({ fileName: file.name, key: k, meta: MALICIOUS[k] });
+            break; // stop checking other keys for this file
+          }
+        }
+      });
+
+      // Render flagged cards
+      if (found.length > 0) {
+        // group by key to avoid repeated messages if multiple copies exist
+        const grouped = {};
+        found.forEach(f => {
+          if (!grouped[f.key]) grouped[f.key] = [];
+          grouped[f.key].push(f.fileName);
+        });
+
+        // Render each found key once, but also list matching filenames
+        Object.keys(grouped).forEach(key => {
+          const meta = MALICIOUS[key];
+          // show the first filename (original) and list all matching names in the card
+          const displayNamesList = grouped[key].map(n => `<li>${escapeHtml(n)}</li>`).join("");
+          const card = document.createElement("div");
+          card.className = "summary-card";
+          const scoreClass = riskClass(meta.score);
+          card.innerHTML = `
+            <h3>⚠ ${escapeHtml(meta.displayName)}</h3>
+            <p><strong>Matched filenames:</strong></p>
+            <ul>${displayNamesList}</ul>
+            <p><strong>Risk Score:</strong> <span class="risk-badge ${scoreClass}">${meta.score}%</span></p>
+            <p><strong>Why flagged (summary):</strong></p>
+            <ul>${meta.reasons.map(r => `<li>${escapeHtml(r)}</li>`).join("")}</ul>
+          `;
+          summaryContainer.appendChild(card);
+        });
+
+        // Final message
+        const totalMaliciousApps = Object.keys(grouped).length;
+        repoMsg.style.color = "#e53935";
+        repoMsg.textContent = `🚨 ${totalMaliciousApps} malicious APK(s) detected and reported for further review.`;
+      } else {
+        repoMsg.style.color = "#00e676";
+        repoMsg.textContent = "✅ No risk, all APKs are real / no known malicious APK names detected.";
+      }
+
+      // Also print debug info to console (helpful for troubleshooting)
+      console.debug("Scanned files:", Array.from(filesList).map(f => f.webkitRelativePath || f.name));
+      console.debug("Normalized match results:", found);
+    }
+
+    // Wire up button
+    document.getElementById("scanRepoBtn").addEventListener("click", () => {
+      const files = document.getElementById("repoFiles").files;
+      scanRepositoryFiles(files);
+    });
+  </script>
+</body>
+</html>
